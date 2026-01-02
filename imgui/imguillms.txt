@@ -1,0 +1,131 @@
+# Moon ImGui (MoonLoader)
+
+## Description
+Moon ImGui is a Lua binding for the Dear ImGui C++ framework, designed for creating GUIs in GTA: San Andreas via MoonLoader. It maps closely to the C++ API but adapts pointer-based types and enums to Lua patterns.
+
+## Dependencies
+```lua
+local imgui = require 'imgui'
+local key = require 'vkeys' -- Recommended for input handling
+local encoding = require 'encoding' -- Required for non-ASCII text
+```
+
+## Boilerplate / Skeleton
+```lua
+local imgui = require 'imgui'
+local key = require 'vkeys'
+
+-- Initialize pointer-like variables globally
+local main_window_state = imgui.ImBool(false)
+local text_buffer = imgui.ImBuffer(256)
+
+function imgui.OnDrawFrame()
+    -- Only render if state is true
+    if main_window_state.v then
+        -- Set window size/pos (Optional)
+        imgui.SetNextWindowSize(imgui.ImVec2(300, 200), imgui.Cond.FirstUseEver)
+        
+        -- Pass the boolean object to Begin to handle the "X" close button
+        imgui.Begin('My Window', main_window_state)
+        
+        imgui.Text('Hello World')
+        
+        if imgui.Button('Press Me') then
+            print('Button pressed')
+        end
+        
+        imgui.InputText('Input', text_buffer)
+        imgui.Text('You wrote: ' .. text_buffer.v)
+        
+        imgui.End()
+    end
+end
+
+function main()
+    while true do
+        wait(0)
+        -- Toggle GUI visibility
+        if wasKeyPressed(key.VK_X) then
+            main_window_state.v = not main_window_state.v
+        end
+        
+        -- Link imgui processing to the window state
+        -- When false, OnDrawFrame is not called
+        imgui.Process = main_window_state.v
+    end
+end
+```
+
+## Data Types & Pointers
+Since Lua cannot pass primitives by reference, Moon ImGui uses container objects. You **must** access values via the `.v` property.
+
+| C++ Type | Lua Wrapper | Usage Example |
+| :--- | :--- | :--- |
+| `bool*` | `imgui.ImBool(val)` | `local b = imgui.ImBool(false); if b.v then ... end` |
+| `int*` | `imgui.ImInt(val)` | `local i = imgui.ImInt(10); i.v = 5` |
+| `float*` | `imgui.ImFloat(val)` | `local f = imgui.ImFloat(1.5); SliderFloat("L", f, 0, 10)` |
+| `char*` (Input) | `imgui.ImBuffer(size)` | `local buf = imgui.ImBuffer(256); InputText("L", buf)` |
+| `ImVec2` | `imgui.ImVec2(x, y)` | `imgui.SetNextWindowSize(imgui.ImVec2(100, 100))` |
+
+**Arrays**:
+*   `float[2]` -> `imgui.ImFloat2`
+*   `int[2]` -> `imgui.ImInt2`
+*   (Same pattern for 3 and 4 component vectors)
+
+## Syntax & API Changes (C++ vs Lua)
+
+1.  **Enums**: No prefixes or underscores.
+    *   C++: `ImGuiWindowFlags_NoTitleBar`
+    *   Lua: `imgui.WindowFlags.NoTitleBar`
+2.  **String Formatting**: ImGui functions do NOT support varargs formatting. Use `string.format`.
+    *   Bad: `imgui.Text("Value: %d", val)`
+    *   Good: `imgui.Text(string.format("Value: %d", val))`
+3.  **Arrays/Lists**: Pointers to arrays are replaced by Lua tables.
+    *   C++: `ListBox(..., items_array, count)`
+    *   Lua: `imgui.ListBox(..., { "Item 1", "Item 2", "Item 3" }, 3)`
+4.  **Callbacks**: Use `imgui.ImCallback`.
+    *   Lua: `imgui.SetNextWindowSizeConstraints(min, max, imgui.ImCallback(function(data) end))`
+5.  **Return Values**: Functions that modified arguments by reference in C++ often return values in Lua.
+    *   `local r, g, b = imgui.ColorConvertHSVtoRGB(h, s, v)`
+
+## Encoding & Localization (Cyrillic/UTF-8)
+ImGui uses UTF-8, but SA:MP/MoonLoader uses Windows-1251 (CP1251). You must convert text.
+
+```lua
+local encoding = require 'encoding'
+encoding.default = 'CP1251'
+local u8 = encoding.UTF8
+
+-- 1. Static Text (Sending to ImGui)
+imgui.Text(u8'Привет мир') 
+
+-- 2. Reading Input (Receiving from ImGui)
+-- 'buf.v' is in UTF-8. Convert back to CP1251 for SA:MP chat/logs.
+local text_cp1251 = u8:decode(buf.v)
+
+-- 3. Dynamic Text (Formatting)
+imgui.Text(u8(string.format('Дата: %s', os.date())))
+```
+
+## Configuration & Flags
+Global settings found in the `imgui` table:
+
+*   `imgui.Process = boolean`: Enables/disables rendering loop.
+*   `imgui.RenderInMenu = boolean`: Render while in ESC menu (Default: `false`).
+*   `imgui.ShowCursor = boolean`: Toggle OS cursor (Default: `true`).
+*   `imgui.LockPlayer = boolean`: Locks character movement while GUI is open (Default: `false`).
+
+## Texture Management
+Textures must be loaded **outside** `OnDrawFrame`.
+
+```lua
+-- Loading
+local texture = imgui.CreateTextureFromFile('moonloader/resource/image.png')
+
+-- Usage
+if texture then
+    imgui.Image(texture, imgui.ImVec2(100, 100))
+end
+
+-- Cleanup (When script terminates or texture unused)
+imgui.ReleaseTexture(texture)

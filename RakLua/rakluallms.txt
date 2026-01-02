@@ -1,0 +1,122 @@
+# RakLua
+A Lua library for MoonLoader that replaces SAMPFUNCS events and functions for interacting with RakNet and BitStream. Uses `sol3` for C++ binding and supports multiple SAMP versions (0.3.7 R1, R2, R3-1, R4-2, R5-1) without SAMPFUNCS dependency.
+
+## Dependencies
+```lua
+local RakLua = require 'RakLua'
+```
+
+## Boilerplate
+```lua
+local RakLua = require 'RakLua'
+
+function main()
+    -- Register Incoming RPC Handler
+    RakLua.registerHandler(RakLuaEvents.INCOMING_RPC, function(id, bs)
+        if id == 93 then -- RPC_ClientMessage
+            local color = bs:readInt32()
+            local len = bs:readInt32()
+            local text = bs:readString(len)
+            
+            print("Server Message: " .. text)
+            
+            -- Block specific message
+            if text:find("BlockMe") then return false end
+            
+            -- Modify message (Example: Change color)
+            bs:resetWritePointer()
+            bs:writeInt32(-1) -- White color
+            bs:writeInt32(len)
+            bs:writeString(text)
+            -- No return needed if modifying in-place without return table logic
+        end
+    end)
+    
+    wait(-1)
+end
+```
+
+## Data Types
+*   **RakLuaBitStream**: A new class for handling packet data.
+    *   Create: `RakLuaBitStream.new()`
+    *   Garbage collection handles deletion automatically.
+
+## Syntax & Patterns
+
+### BitStream Operations
+```lua
+local bs = RakLuaBitStream.new()
+
+-- Write
+bs:writeUInt8(255)
+bs:writeFloat(1.0)
+bs:writeString("Hello")
+bs:writeBool(true)
+
+-- Read
+-- Note: 'bs:readUInt(8)' returns a function you must call -> bs:readUInt(8)()
+-- Or use specific helper methods:
+local byte = bs:readUInt8() 
+local f = bs:readFloat()
+local str = bs:readString(len)
+
+-- Offsets
+bs:resetReadPointer()
+bs:resetWritePointer()
+bs:ignoreBytes(10) -- Skip 10 bytes
+```
+
+### Sending Data
+```lua
+-- Send RPC
+local bs = RakLuaBitStream.new()
+bs:writeInt32(#text)
+bs:writeString(text)
+bs:sendRPC(50) -- RPC_ServerCommand
+
+-- Send Packet
+local bs = RakLuaBitStream.new()
+bs:writeUInt8(id) -- Packet ID
+-- ... write data ...
+bs:sendPacket()
+
+-- Emulation (Inject Incoming)
+bs:emulIncomingRPC(rpcId)
+bs:emulIncomingPacket(packetId)
+```
+
+### Event Handling
+Register handlers using `RakLua.registerHandler(EventType, callback)`.
+
+**Event Types:**
+*   `RakLuaEvents.INCOMING_RPC`
+*   `RakLuaEvents.OUTGOING_RPC`
+*   `RakLuaEvents.INCOMING_PACKET`
+*   `RakLuaEvents.OUTGOING_PACKET`
+
+**Callback Signature (Incoming RPC):**
+`function(id, bs)`
+*   Return `false` to block.
+*   Return `true` or `nil` to allow.
+
+**Callback Signature (Outgoing RPC/Packet):**
+`function(id, bs, priority, reliability, orderingChannel, shiftTimestamp)`
+
+### Modifying Data in Handlers
+You can rewrite the BitStream in place:
+1.  Read data to variables.
+2.  `bs:resetWritePointer()`
+3.  Write modified data back.
+
+## SAMP.Lua Compatibility
+To use with `SAMP.Lua` (v2.0+), call this **before** requiring `samp.lua`:
+```lua
+RakLua.defineSampLuaCompatibility()
+local samplua = require 'samp.events' -- Now uses RakLua internals
+```
+
+## Best Practices
+1.  **BitStream Creation**: Always use `RakLuaBitStream.new()`, not the standard MoonLoader `raknetNewBitStream`.
+2.  **String Length**: When writing strings for RPCs (like Chat or Commands), usually write the length first (`UInt8` or `Int32` depending on RPC definition).
+3.  **Return Values**: In handlers, returning `false` blocks the packet. Returning nothing allows it.
+```

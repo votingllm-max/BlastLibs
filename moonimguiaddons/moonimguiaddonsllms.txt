@@ -1,0 +1,154 @@
+# Moon Imgui Addons (ADDONS.lua)
+A library for `mimgui` providing animated widgets, custom buttons, progress bars, and utility functions for smooth animations and color manipulation.
+
+## Dependencies
+```lua
+local imgui = require 'mimgui'
+local addons = require 'ADDONS'
+-- encoding is usually required for Cyrillic text in buttons/hints
+local u8 = require 'encoding'.UTF8
+```
+
+## Boilerplate
+```lua
+local imgui = require 'mimgui'
+local addons = require 'ADDONS'
+local u8 = require 'encoding'.UTF8
+
+local new, str, sizeof = imgui.new, imgui.string, imgui.sizeof
+local win_state = new.bool(false)
+local toggle_state = new.bool(false)
+
+-- Main window
+local function OnFrame()
+    if not win_state[0] then return end
+
+    imgui.SetNextWindowSize(imgui.ImVec2(500, 300), imgui.Cond.FirstUseEver)
+    if imgui.Begin("Addons Demo", win_state) then
+        
+        -- Toggle Button
+        addons.ToggleButton("##myToggle", toggle_state)
+        imgui.SameLine()
+        imgui.Text(toggle_state[0] and "Active" or "Inactive")
+
+        -- Animated Button with Hint
+        if addons.AnimButton(u8"Click Me", imgui.ImVec2(100, 30), 0.3) then
+            print("Button Clicked")
+        end
+        addons.Hint("##btnHint", u8"This is a tooltip", imgui.ImVec4(1, 1, 1, 1), false)
+
+        -- Circular Progress
+        imgui.Separator()
+        addons.CircularProgressBar(75, 20.0, 3.0, "%d%%")
+        
+        -- Aligned Text
+        addons.AlignedText(u8"Centered Text", 2, imgui.ImVec4(0, 1, 0, 1))
+
+        imgui.End()
+    end
+end
+
+imgui.OnFrame(function() return win_state[0] end, OnFrame)
+
+function main()
+    imgui.OnInitialize(function()
+        imgui.GetIO().IniFilename = nil
+    end)
+    -- Command to toggle window
+    require('lib.samp.events').onSendChat = function(msg)
+        if msg == "/maddons" then win_state[0] = not win_state[0]; return false end
+    end
+    wait(-1)
+end
+```
+
+## Data Types
+The library relies heavily on standard `mimgui` (cimgui) types:
+*   `ImVec2`: `imgui.ImVec2(x, y)`
+*   `ImVec4`: `imgui.ImVec4(r, g, b, a)`
+*   `ImBool`: `imgui.new.bool(false)`
+*   `ImTextureID`: Pointer to a loaded texture.
+
+## Syntax & Patterns
+
+### Widgets
+Use these in your `OnFrame` or render loop.
+
+*   **Buttons**:
+    ```lua
+    -- Ripple/Material effect button
+    addons.MaterialButton(str_id, size --[[ImVec2]], duration --[[float]])
+    
+    -- Animated background button
+    addons.AnimButton(label, size --[[ImVec2]], duration --[[float]])
+    
+    -- Disabled/State button (wraps standard ImGui button args)
+    addons.StateButton(is_enabled --[[bool]], label, size)
+    
+    -- Toggle Switch
+    addons.ToggleButton(str_id, imBool_state)
+    
+    -- Window Close Button (Cross)
+    addons.CloseButton(str_id, imBool_state, size --[[ImVec2]], rounding --[[float]])
+    ```
+
+*   **Navigation**:
+    ```lua
+    -- Tab/Header button
+    -- Returns true when clicked, use to switch active tab index
+    if addons.HeaderButton(is_active --[[bool]], str_id) then current_tab = 1 end
+    
+    -- Sidebar/Page button (Requires FontAwesome icon string)
+    if addons.PageButton(is_active --[[bool]], icon_str, name_str, width --[[float]]) then page = 1 end
+    ```
+
+*   **Visuals**:
+    ```lua
+    -- Tooltip on hover of previous item
+    -- no_center: bool (if true, aligns left/standard)
+    addons.Hint(str_id, text, color --[[ImVec4]], no_center)
+    
+    -- Text Alignment: 1=Left, 2=Center, 3=Right
+    addons.AlignedText(text, align --[[int]], color --[[ImVec4]])
+    
+    -- Circular Progress
+    addons.CircularProgressBar(value --[[int]], radius --[[float]], thickness --[[float]], format_str)
+    
+    -- Image Preview (Click to expand)
+    addons.Picture(str_id, texture_id, size --[[ImVec2]], zoom_mult --[[float]], hint_text)
+    ```
+
+### Utilities (Math & Color)
+
+*   **Animations (Smooth Interpolation)**:
+    Used to smoothly transition numbers or vectors over time.
+    ```lua
+    -- Float interpolation
+    local new_val = addons.bringFloatTo(current_val, target_val, start_time, duration)
+    
+    -- Vector interpolation
+    local new_vec2 = addons.bringVec2To(current_vec2, target_vec2, start_time, duration)
+    local new_vec4 = addons.bringVec4To(current_vec4, target_vec4, start_time, duration)
+    ```
+
+*   **Helpers**:
+    ```lua
+    -- Clamp a number between min and max
+    local val = addons.limit(value, min, max)
+    
+    -- Check if cursor is hovering a specific coordinate rectangle
+    local hovered = addons.isPlaceHovered(pos_top_left --[[ImVec2]], pos_bottom_right --[[ImVec2]])
+    
+    -- Get readable text color (col_1 or col_2) based on background contrast
+    local text_col = addons.getContrastColor(bg_col, col_white, col_black)
+    
+    -- Modify alpha of an existing ImVec4
+    local trans_col = addons.set_alpha(color --[[ImVec4]], alpha --[[float 0.0-1.0]])
+    ```
+
+## Best Practices
+1.  **Unique IDs**: Like standard ImGui, ensure `str_id` strings (e.g., `"##btn1"`) are unique per frame/window to prevent conflicts.
+2.  **Animations**: The `duration` parameter in `AnimButton` and `MaterialButton` defines the speed of the visual effect (in seconds).
+3.  **Textures**: For `addons.Picture`, you must load the texture via standard D3D9/ImGui methods first to get an `ImTextureID`.
+4.  **Fonts**: `PageButton` assumes you have a font loaded that supports the icon characters (e.g., FontAwesome) passed in the `icon` argument.
+```

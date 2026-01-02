@@ -1,0 +1,87 @@
+# mimgui_blur
+Library for implementing Gaussian blur effects within mimgui (ImGui) windows and draw lists.
+
+## Dependencies
+```lua
+local imgui = require 'mimgui'
+local mimgui_blur = require 'mimgui_blur'
+```
+
+## Boilerplate
+```lua
+local imgui = require 'mimgui'
+local mimgui_blur = require 'mimgui_blur'
+
+local win_state = imgui.new.bool(false)
+local blur_radius = imgui.new.float(5.0)
+
+imgui.OnFrame(function() return win_state[0] end, function()
+    imgui.SetNextWindowSize(imgui.ImVec2(400, 300), imgui.Cond.FirstUseEver)
+    
+    if imgui.Begin("Blur Example", win_state) then
+        -- 1. Draw UI elements normally
+        imgui.Text("Background is blurred.")
+        imgui.SliderFloat("Radius", blur_radius, 0.0, 20.0)
+
+        -- 2. Apply blur to the window background
+        -- This blurs everything drawn BEFORE this call in the current draw list
+        mimgui_blur.apply(imgui.GetWindowDrawList(), blur_radius[0])
+        
+        -- 3. Elements drawn AFTER apply() will not be blurred
+        imgui.Button("Clear Button")
+        
+        imgui.End()
+    end
+end)
+
+function main()
+    -- Toggle command
+    require('lib.samp.events').onSendChat = function(msg)
+        if msg == "/blur" then win_state[0] = not win_state[0] end
+    end
+    wait(-1)
+end
+```
+
+## Syntax & Patterns
+
+### Functions
+All functions require a valid `ImDrawList`. Other parameters are optional.
+
+1.  **Blur Entire DrawList**
+    ```lua
+    -- draw_list: ImDrawList
+    -- radius: float (default: usually ~1.0-5.0)
+    -- color: ImU32/int (tint color, optional)
+    -- rounding: float (corner rounding, optional)
+    -- rounding_corners: int (flags, optional)
+    mimgui_blur.apply(draw_list, radius, color, rounding, rounding_corners)
+    ```
+
+2.  **Blur Previous Item**
+    Blurs the bounding box of the last rendered ImGui item (e.g., a button or child window).
+    ```lua
+    imgui.Button("I will be blurred")
+    mimgui_blur.applyItem(imgui.GetWindowDrawList(), 5.0)
+    ```
+
+3.  **Blur Specific Rectangle**
+    ```lua
+    -- pos_start, pos_end: ImVec2
+    mimgui_blur.applyRect(draw_list, pos_start, pos_end, radius, color, rounding, rounding_corners)
+    ```
+
+## Data Types
+*   **draw_list**: `imgui.GetWindowDrawList()` (local window) or `imgui.GetBackgroundDrawList()` (global screen).
+*   **radius**: `float`. Higher values create stronger blur but may affect performance.
+*   **pos**: `imgui.ImVec2`.
+
+## Best Practices
+*   **Render Order**: 
+    *   Functions blur what is *underneath* the blur layer.
+    *   To blur a window background, call `apply` *after* `Begin` but *before* elements you want to remain sharp (or use `GetBackgroundDrawList()` to blur the world behind the window).
+    *   Calling `apply` at the very end of `Begin`/`End` will blur the content of the window itself.
+*   **Draw Lists**:
+    *   `imgui.GetWindowDrawList()`: Blurs content within the specific window.
+    *   `imgui.GetBackgroundDrawList()`: Blurs the game world/screen behind the UI.
+```

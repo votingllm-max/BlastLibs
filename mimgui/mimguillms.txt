@@ -1,0 +1,104 @@
+# mimgui (Dear ImGui for MoonLoader) Context
+
+## Description
+mimgui is a graphics library for MoonLoader (GTA:SA) based on Dear ImGui v1.72 + FFI. It replaces the older MoonImGui. It uses LuaJIT FFI for C-type handling.
+
+## Essential Dependencies
+```lua
+local imgui = require 'mimgui'
+local ffi = require 'ffi'
+local vkeys = require 'vkeys'
+local wm = require 'windows.message'
+local encoding = require 'encoding'
+encoding.default = 'CP1251'
+local u8 = encoding.UTF8
+```
+
+## Core Structure (Boilerplate)
+```lua
+local new = imgui.new
+local renderWindow = new.bool(false)
+
+-- Config (Disable INI save example)
+imgui.OnInitialize(function()
+    imgui.GetIO().IniFilename = nil
+end)
+
+-- Frame Definition
+local newFrame = imgui.OnFrame(
+    function() return renderWindow[0] end, -- Visibility condition
+    function(player) -- Render callback (player: interaction helper)
+        local sizeX, sizeY = getScreenResolution()
+        
+        -- Window setup (Position/Size only once)
+        imgui.SetNextWindowPos(imgui.ImVec2(sizeX / 2, sizeY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
+        imgui.SetNextWindowSize(imgui.ImVec2(200, 150), imgui.Cond.FirstUseEver)
+        
+        -- Window Start
+        imgui.Begin("Main Window", renderWindow) 
+        
+        imgui.Text("Hello World")
+        
+        imgui.End()
+    end
+)
+
+-- Main Loop & Input Handling
+function main()
+    addEventHandler('onWindowMessage', function(msg, wparam, lparam)
+        if msg == wm.WM_KEYDOWN or msg == wm.WM_SYSKEYDOWN then
+            if wparam == vkeys.VK_X then
+                renderWindow[0] = not renderWindow[0]
+            end
+        end
+    end)
+    wait(-1)
+end
+```
+
+## Data Types & FFI (Crucial Differences)
+mimgui uses `ffi` types instead of custom object wrappers. Access values via `[0]`.
+
+| Type | Constructor | Access/Set |
+| :--- | :--- | :--- |
+| **Boolean** | `local b = imgui.new.bool(true)` | `if b[0] then ... end` |
+| **Integer** | `local i = imgui.new.int(5)` | `i[0] = 10` |
+| **Float** | `local f = imgui.new.float(1.5)` | `f[0] = 2.0` |
+| **Buffer** | `local buf = imgui.new.char[256]("Text")` | Read: `ffi.string(buf)`<br>Write: `imgui.StrCopy(buf, "New")` |
+
+## String Handling & Encoding (Cyrillic)
+Always use `u8` for UI labels (UTF-8) and decode back to CP1251 when reading inputs for MoonLoader compatibility.
+
+```lua
+-- Input Widget Example
+if imgui.InputText(u8"Введите текст", inputField, ffi.sizeof(inputField)) then
+    local text = u8:decode(ffi.string(inputField)) -- Convert UTF-8 buffer to CP1251
+    print(text)
+end
+
+-- Button with text
+if imgui.Button(u8"Нажать меня") then
+    imgui.StrCopy(inputField, "") -- Clear buffer
+end
+```
+
+## API Syntax Differences (vs C++ ImGui)
+1.  **Namespace:** Functions are in `imgui` table (e.g., `imgui.Text` vs `ImGui::Text`).
+2.  **Enums:** No prefixes (e.g., `ImGuiWindowFlags_NoResize` -> `imgui.WindowFlags.NoResize`).
+3.  **Arrays:** Use FFI arrays for things like `ListBox`.
+    ```lua
+    local itemsList = {"One", "Two", "Three"}
+    local items = imgui.new['const char*'][#itemsList](itemsList)
+    imgui.ListBoxStr_arr("List", currentInt, items, #itemsList)
+    ```
+
+## Player Interaction (Within OnFrame)
+The `player` argument in the render function provides helpers:
+*   `player.LockPlayer = true/false` (Freeze)
+*   `player.HideCursor = true/false` (Cursor visibility)
+
+## Best Practices
+*   **Unique IDs:** If windows or elements share names, append `##ID` (e.g., `imgui.Begin("Title##1")`).
+*   **Optimization:** Use `onWindowMessage` for toggling windows instead of checking keys in `while true` loops.
+*   **Initialize:** Load fonts or settings in `imgui.OnInitialize`.
+```

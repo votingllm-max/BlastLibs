@@ -1,0 +1,98 @@
+# SaMemory
+Advanced memory manipulation library for MoonLoader that replaces raw addresses and offsets with named C-style structures, constants, and typed pointers.
+
+## Dependencies
+```lua
+local samem = require 'SAMemory'
+```
+
+## Boilerplate
+```lua
+local samem = require 'SAMemory'
+
+-- 1. Load C-style structure definitions required for the script
+samem.require 'CVehicle'
+samem.require 'CPool'
+
+function main()
+    while true do
+        wait(0)
+        -- 2. Access global pointers provided by the library
+        -- NOTE: Use [0] to dereference the pointer wrapper
+        local veh_ptr = samem.player_vehicle[0]
+
+        -- 3. Check for nullptr before access
+        if veh_ptr ~= samem.nullptr then
+            -- Access fields using dot notation (names match GTASA C++ headers)
+            local speed = veh_ptr.vMoveSpeed
+            
+            -- Vector/Matrix math is supported via operator overloading
+            -- Invert speed
+            veh_ptr.vMoveSpeed = -speed
+        end
+    end
+end
+```
+
+## Data Types & FFI
+SaMemory maps game memory to Lua userdata representing C structs.
+
+*   **Loading Structs**: Use `samem.require 'StructName'` to load definitions (e.g., `CPed`, `CVehicle`, `CTrain`, `CPool`, `vector2d`).
+*   **Casting**: Use `samem.cast('TypeString', value)` to treat memory as a specific type.
+    ```lua
+    local ptr_as_int = tonumber(samem.cast('unsigned int', veh_ptr))
+    local train_ptr = samem.cast('CTrain *', veh_ptr)
+    ```
+*   **Null Pointer**: `samem.nullptr` is a constant used for validity checks.
+*   **Vectors**: `vector2d` and `vector3d` structures support arithmetic operations (`+`, `-`, `*`) and unary minus (`-vector`).
+
+## Syntax & Patterns
+
+### Pointers & Dereferencing
+Global variables in `samem` (like `vehicle_pool`, `ped_pool`, `player_vehicle`) are pointer wrappers. You **must** index them with `[0]` to get the actual object/struct.
+
+```lua
+local pool = samem.vehicle_pool[0] -- Correct
+-- local pool = samem.vehicle_pool -- Incorrect (returns wrapper)
+```
+
+### Working with Pools (`CPool`)
+Pools have specific iterator syntax and helper methods.
+
+```lua
+samem.require 'CPool'
+samem.require 'CPed'
+
+local pool = samem.ped_pool[0]
+if pool ~= samem.nullptr then
+    -- Info methods
+    print(pool:size(), pool:free_slots(), pool:used_slots())
+
+    -- Iteration: Pass the struct name string to the iterator
+    for slot, ped_ptr in pool('CPed') do
+        -- Access ped data
+        local matrix = ped_ptr.pMatrix
+        print("Ped Pos:", matrix.pos.x, matrix.pos.y, matrix.pos.z)
+    end
+    
+    -- Get SCM Handle
+    local handle = pool:get_handle('CPed', ped_ptr)
+end
+```
+
+### Matrix & Vector Manipulation
+Structures like `pMatrix` contain nested vector fields (`right`, `up`, `at`, `pos`).
+
+```lua
+local matrix = veh.pMatrix
+
+-- Invert direction (rotate 180 degrees)
+matrix.up = -matrix.up
+matrix.right = -matrix.right
+```
+
+## Best Practices
+*   **Type Safety**: Always require the structures (`samem.require`) before trying to access fields of that type.
+*   **Null Checks**: Always check `if ptr ~= samem.nullptr` after dereferencing a global pointer or retrieving an object from a pool.
+*   **Pool Iterators**: When iterating a pool, strictly provide the type name (e.g., `'CVehicle'`, `'CPed'`) to ensure the iterator returns correctly typed pointers for fields to work.
+*   **Performance**: Cache dereferenced pointers (e.g., `local veh = samem.player_vehicle[0]`) inside loops rather than dereferencing repeatedly if valid.

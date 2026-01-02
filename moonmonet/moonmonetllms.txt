@@ -1,0 +1,129 @@
+# MoonMonet
+A MoonLoader library that generates Android 12 "Material You" style color palettes (accents and neutrals) from a single base color.
+
+## Dependencies
+```lua
+local MoonMonet = require 'MoonMonet'
+local bit = require 'bit' -- Required for the color adapter helper
+local imgui = require 'mimgui' -- or 'imgui', required if using as_vec4()
+```
+
+## Boilerplate & Helper Wrapper
+To effectively use the generated colors in ImGui or Chat, use this adapter pattern.
+
+```lua
+local MoonMonet = require 'MoonMonet'
+local bit = require 'bit'
+
+-- 1. Helper Function to convert MoonMonet integers to usable formats
+local function ColorAccentsAdapter(color)
+    local function explode_argb(argb)
+        local a = bit.band(bit.rshift(argb, 24), 0xFF)
+        local r = bit.band(bit.rshift(argb, 16), 0xFF)
+        local g = bit.band(bit.rshift(argb, 8), 0xFF)
+        local b = bit.band(argb, 0xFF)
+        return a, r, g, b
+    end
+    local function join_argb(a, r, g, b)
+        local argb = b
+        argb = bit.bor(argb, bit.lshift(g, 8))
+        argb = bit.bor(argb, bit.lshift(r, 16))
+        argb = bit.bor(argb, bit.lshift(a, 24))
+        return argb
+    end
+    
+    local a, r, g, b = explode_argb(color)
+    local ret = {a = a, r = r, g = g, b = b}
+
+    -- Methods
+    function ret:apply_alpha(alpha) self.a = alpha; return self end
+    function ret:as_vec4() return imgui.ImVec4(self.r / 255, self.g / 255, self.b / 255, self.a / 255) end
+    function ret:as_argb() return join_argb(self.a, self.r, self.g, self.b) end -- Standard SAMP
+    function ret:as_u32() return join_argb(self.a, self.b, self.g, self.r) end -- ImGui U32 (ABGR)
+    function ret:as_chat() return string.format("%06X", bit.band(join_argb(self.a, self.r, self.g, self.b), 0xFFFFFF)) end
+    
+    return ret
+end
+
+-- 2. Main Logic
+function main()
+    -- Configuration
+    local SEED_COLOR = 0xFF00BABE -- Format: AARRGGBB
+    local CHROMA = 1.0            -- Brightness multiplier (0.5 - 2.0)
+    local IS_DARK = true          -- Mode
+
+    -- Generate Palette
+    local palette = MoonMonet.buildColors(SEED_COLOR, CHROMA, IS_DARK)
+
+    -- Example Usage: Apply to ImGui Style
+    local style = imgui.GetStyle()
+    -- Access specific palette -> specific shade (color_*)
+    local btnColor = palette.accent2.color_900 
+    
+    style.Colors[imgui.Col.Button] = ColorAccentsAdapter(btnColor):apply_alpha(0xAA):as_vec4()
+    
+    -- Example Usage: Chat Message
+    local chatColorHex = ColorAccentsAdapter(palette.accent1.color_500):as_chat()
+    sampAddChatMessage(string.format("Hello in {%s}Material You!", chatColorHex), -1)
+end
+```
+
+## Data Types & API
+
+### Main Function
+```lua
+-- Returns a table containing nested palette tables
+local palette = MoonMonet.buildColors(
+    int color,          -- AARRGGBB format (e.g., 0xFF00BABE)
+    float multiplier,   -- Chroma/Brightness (Range: 0.5 to 2.0)
+    bool is_dark        -- Generation mode
+)
+```
+
+### Output Structure
+The returned `palette` table contains 5 sub-tables (palettes), each containing 13 shades.
+
+**Palettes:**
+1.  `accent1` (Primary)
+2.  `accent2` (Secondary)
+3.  `accent3` (Tertiary)
+4.  `neutral1` (Backgrounds/Surface)
+5.  `neutral2` (Outlines/Borders)
+
+**Shades (Keys inside palette tables):**
+Each key returns an integer representing the color.
+*   `color_0` (Lightest)
+*   `color_10`
+*   `color_50`
+*   `color_100`
+*   `color_200`
+*   `color_300`
+*   `color_400`
+*   `color_500` (Mid-tone)
+*   `color_600`
+*   `color_700`
+*   `color_800`
+*   `color_900`
+*   `color_1000` (Darkest)
+
+## Syntax & Patterns
+
+### Converting Colors
+The raw output from `MoonMonet` is an integer. Use the `ColorAccentsAdapter` pattern to convert it for specific uses.
+
+*   **ImGui (`ImVec4`)**: `ColorAccentsAdapter(val):as_vec4()`
+*   **ImGui (`ImU32`/`col32`)**: `ColorAccentsAdapter(val):as_u32()` (Note: This swaps R and B for ImGui's byte order if using `join_argb` with `a,b,g,r` logic).
+*   **SAMP Chat String**: `ColorAccentsAdapter(val):as_chat()`
+*   **Transparency**: `ColorAccentsAdapter(val):apply_alpha(0xFF):as_vec4()`
+
+### Access Pattern
+```lua
+-- Correct access path:
+-- palette -> [palette_type] -> [shade_key]
+local c = generated_colors.neutral1.color_800
+```
+
+## Best Practices
+1.  **Chroma Range**: Keep the `CHROMA_MULTIPLIER` between `0.5` and `2.0` for valid color generation.
+2.  **Color Format**: Ensure the input seed color is `0xAARRGGBB`.
+3.  **Adapter**: Always include the `ColorAccentsAdapter` or similar bitwise logic, as the raw library does not provide native ImGui or Hex-String conversion methods.

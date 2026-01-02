@@ -1,0 +1,117 @@
+# SAMP.Events (lib.samp.events)
+A Lua library for MoonLoader that provides event-driven handling for incoming and outgoing RakNet packets (RPCs and synchronization) in GTA: SA-MP.
+
+## Dependencies
+```lua
+local sampev = require 'lib.samp.events'
+-- Requires 'samp.lua' library folder in 'lib/'
+```
+
+## Boilerplate
+```lua
+local sampev = require 'lib.samp.events'
+
+function main()
+    -- The script must allow the main thread to run or yield usually, 
+    -- but events are callbacks handled asynchronously.
+    wait(-1)
+end
+
+-- 1. READ event data
+function sampev.onSendChat(msg)
+    print('Sending message: ' .. msg)
+end
+
+-- 2. BLOCK event (return false)
+function sampev.onSetPlayerPos(position)
+    -- Block server from setting player position
+    return false
+end
+
+-- 3. MODIFY RPC data (return table with all arguments)
+function sampev.onSendChat(msg)
+    return {'[Prefix] ' .. msg}
+end
+```
+
+## Data Types
+*   **Primitives**: `int`, `float`, `bool`, `string`.
+*   **Vectors**: Passed as Lua tables `{x = float, y = float, z = float}`.
+*   **Sync Structures**: Complex nested tables (see `lib/samp/synchronization.lua`).
+
+## Syntax & Patterns
+
+### Standard RPCs (Read/Block/Modify)
+Most events (Chat, Commands, Dialogs, Server Messages) work via return values.
+*   **To Read**: Access arguments directly.
+*   **To Block**: `return false`.
+*   **To Modify**: `return { arg1, arg2, ... }` (Must return **all** arguments in order).
+
+### Synchronization Packets (In-Place Modification)
+**Crucial Distinction**: Sync events (`onSendPlayerSync`, `onSendVehicleSync`, etc.) do **not** use return values for modification to improve performance.
+*   **To Read**: Access `data` fields.
+*   **To Block**: `return false`.
+*   **To Modify**: Edit the `data` table directly. No return needed.
+
+**List of Sync Events:**
+`onSendPlayerSync`, `onSendVehicleSync`, `onSendPassengerSync`, `onSendAimSync`, `onSendUnoccupiedSync`, `onSendTrailerSync`, `onSendBulletSync`, `onSendSpectatorSync`.
+
+```lua
+function sampev.onSendPlayerSync(data)
+    -- Modify directly
+    data.position.x = 100.0
+    data.position.y = 200.0
+    -- No return statement for modification
+end
+```
+
+### Advanced: Custom Packet Registration
+You can register handlers for packets not defined in the library without editing source files.
+
+```lua
+local sampev = require 'lib.samp.events'
+local raknet = require 'lib.samp.raknet'
+
+-- Register generic RPC
+-- Structure: [ID] = { 'EventName', {param1='type'}, {param2='type'} }
+sampev.INTERFACE.INCOMING_RPCS[raknet.RPC.PLAYSOUND] = {
+    'onPlaySound', 
+    {soundId = 'int32'}, 
+    {x = 'float'}, 
+    {y = 'float'}, 
+    {z = 'float'}
+}
+
+-- Define the handler
+function sampev.onPlaySound(soundId, x, y, z)
+    print(string.format("Sound: %d at %0.2f, %0.2f, %0.2f", soundId, x, y, z))
+end
+```
+
+### Custom Types (BitStreamIO)
+Extend `BitStreamIO` to handle custom data structures.
+
+```lua
+sampev.INTERFACE.BitStreamIO.fvector3 = {
+    read = function(bs)
+        return {
+            x = raknetBitStreamReadFloat(bs),
+            y = raknetBitStreamReadFloat(bs),
+            z = raknetBitStreamReadFloat(bs)
+        }
+    end,
+    write = function(bs, value)
+        raknetBitStreamWriteFloat(bs, value.x)
+        raknetBitStreamWriteFloat(bs, value.y)
+        raknetBitStreamWriteFloat(bs, value.z)
+    end
+}
+```
+
+## Best Practices
+1.  **Reference Files**:
+    *   Check `lib/samp/events.lua` for RPC parameter names and order.
+    *   Check `lib/samp/synchronization.lua` for sync data structures.
+2.  **Performance**: Sync events run every few milliseconds. Keep logic inside `onSendPlayerSync` minimal.
+3.  **Conflict**: Returning `false` completely stops the packet. Be careful not to desync the client (e.g., blocking `onInitGame`).
+```

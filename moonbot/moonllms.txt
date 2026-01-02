@@ -1,0 +1,161 @@
+# MoonBot Library for MoonLoader
+
+## Description
+MoonBot is a Lua library for MoonLoader (GTA San Andreas) that allows the creation of in-game bots (simulated clients similar to RakBot/RakSAMP) directly from the game client. Each bot has a unique index and handle.
+
+## Dependencies
+```lua
+local mb = require('MoonBot')
+```
+
+## Boilerplate Example
+```lua
+local mb = require('MoonBot')
+
+-- Callback for incoming RPCs to the BOT
+function onBotRPC(bot, rpcId, bs)
+    -- bot: Bot Handle
+    -- rpcId: Integer
+    -- bs: BitStream object (must be read using MoonBot's bs methods)
+    print(string.format('Bot %s received RPC: %d', bot.name, rpcId))
+end
+
+-- Callback for incoming Packets to the BOT
+function onBotPacket(bot, packetId, bs)
+    if packetId == 41 then
+        print(string.format("Bot %s connected with ID %d", bot.name, bot.playerID))
+    end
+end
+
+function main()
+    -- Register commands
+    sampRegisterChatCommand('bot.add', cmdAddBot)
+    sampRegisterChatCommand('bot.remove', cmdRemoveBot)
+    
+    -- Prevent script termination
+    wait(-1)
+end
+
+function cmdAddBot(arg)
+    -- Add a bot (name is optional, generates "UnnamedINDEX" if empty)
+    local bot = mb.add(arg) 
+    
+    -- Connect the bot (auto-detects server IP/Port)
+    bot:connect() 
+    
+    -- Optional: Connect as NPC (Bypass anti-cheat)
+    -- bot:connectAsNPC(true)
+    
+    print(string.format('Connecting bot: %s (Index: %d)', bot.name, bot.index))
+end
+
+function cmdRemoveBot(arg)
+    local index = tonumber(arg)
+    if index then
+        local bot = mb.getBotHandleByIndex(index)
+        if bot then
+            print("Removing bot: " .. bot.name)
+            mb.remove(index)
+        end
+    end
+end
+```
+
+## Library Methods (`mb`)
+| Method | Description |
+| :--- | :--- |
+| `mb.add(<Name>)` | Registers a new bot. Returns `BotHandle`. |
+| `mb.remove([Index])` | Deletes a bot by its index. |
+| `mb.getBots()` | Returns a table of all active bot handles. |
+| `mb.getBotHandleByIndex([Index])` | Returns `BotHandle` or `nil`. |
+| `mb.disconnectAfterUnload([bool])` | Sets if bots auto-disconnect when the script unloads. |
+| `mb.getBitStream()` | Creates a new `BitStream` object. **Must be manually deleted via `bs:remove()`**. |
+| `mb.getPlayerData()` | Returns `PlayerData` (ID_PLAYER_SYNC). **Auto-deleted**. |
+| `mb.getIncarData()` | Returns `IncarData` (ID_VEHICLE_SYNC). **Auto-deleted**. |
+| `mb.getPassengerData()` | Returns `PassengerData` (ID_PASSENGER_SYNC). **Auto-deleted**. |
+| `mb.getUnoccupiedData()` | Returns `UnoccupiedData` (ID_UNOCCUPIED_SYNC). **Auto-deleted**. |
+| `mb.getTrailerData()` | Returns `TrailerData` (ID_TRAILER_SYNC). **Auto-deleted**. |
+| `mb.getBulletData()` | Returns `BulletData` (ID_BULLET_SYNC). **Auto-deleted**. |
+| `mb.getSpectatorData()` | Returns `SpectatorData` (ID_SPECTATOR_SYNC). **Auto-deleted**. |
+| `mb.getAimData()` | Returns `AimData` (ID_AIM_SYNC). **Auto-deleted**. |
+
+## Bot Handle Methods (`bot`)
+*Properties (Read-Only):* `bot.index`, `bot.name`, `bot.connected`, `bot.playerID`.
+
+| Method | Arguments | Description |
+| :--- | :--- | :--- |
+| `bot:connect` | `<IP>, <Port>` | Connects bot to server. Args optional (uses current server if omitted). |
+| `bot:disconnect` | none | Disconnects the bot. |
+| `bot:connectAsNPC` | `[bool state]` | Toggles NPC mode (useful for anti-cheat bypass). |
+| `bot:changeName` | `[Name]` | Changes nick and reconnects. |
+| `bot:setReconnectTime` | `[ms]` | Sets auto-reconnect delay. |
+| `bot:setProxy` | `[ip], [port], <user>, <pass>` | Sets SOCKS 5 UDP proxy. |
+| `bot:useProxy` | `[bool], func(state)` | Activates/deactivates proxy. Callback receives result state. |
+| `bot:sendRPC` | `[rpcId], [BitStream]` | Sends an RPC. |
+| `bot:sendBitStream` | `[BitStream]` | Sends a raw packet. |
+| `bot:sendCommand` | `[cmd]` | Sends a command (e.g., `"/help"`). |
+| `bot:sendChat` | `[msg]` | Sends a chat message. |
+| `bot:sendDialogResponse` | `[id], [btn], [list], [input]` | Responds to a dialog. |
+| `bot:sendClickTextdraw` | `[id]` | Clicks a textdraw. |
+| `bot:sendClickPlayer` | `[id], [source]` | Sends RPC ClickPlayer. |
+| `bot:sendRequestClass` | `[classId]` | Sends RequestClass RPC. |
+| `bot:sendRequestSpawn` | none | Sends RequestSpawn RPC. |
+| `bot:sendSpawn` | none | Sends Spawn RPC. |
+| `bot:sendInteriorChange` | `[interiorId]` | Sends interior change. |
+| `bot:sendPickedUpPickup` | `[pickupId]` | Picks up a pickup. |
+| `bot:sendEnterVehicle` | `[vehId], [isPassenger]` | Sends RPC EnterVehicle. |
+| `bot:sendExitVehicle` | `[vehId]` | Sends RPC ExitVehicle. |
+| `bot:sendDeathNotification` | `[reason], [killerId]` | Sends death RPC. |
+
+**Sync Sending Methods**:
+Each takes the corresponding data object (e.g., `PlayerData`).
+`bot:sendPlayerData(data)`, `bot:sendVehicleData(data)`, `bot:sendPassengerData(data)`, `bot:sendUnoccupiedData(data)`, `bot:sendTrailerData(data)`, `bot:sendSpectatorData(data)`, `bot:sendBulletData(data)`, `bot:sendAimData(data)`.
+
+## BitStream Methods (`bs`)
+*Note: If created via `mb.getBitStream()`, call `bs:remove()` when done.*
+*Read/Write Offsets handle internal pointers automatically.*
+
+*   **Management**: `bs:remove()`, `bs:resetReadPointer()`, `bs:resetWritePointer()`, `bs:ignoreBits(n)`.
+*   **Offsets**: `bs:setReadOffset(bits)`, `bs:setWriteOffset(bits)`.
+*   **Info**: `bs:getNumberOfBitsUsed()`, `bs:getNumberOfUnreadBits()`.
+*   **Read**: `readBool`, `readInt8`, `readInt16`, `readInt32`, `readFloat`, `readString8`, `readString16`, `readString32`, `decodeString(maxChars)`.
+*   **Write**: `writeBool`, `writeInt8`, `writeInt16`, `writeInt32`, `writeFloat`, `writeString8`, `writeString16`, `writeString32`.
+
+## Sync Data Structures
+These structures mimic `Samp.Lua` structures but are specific to MoonBot.
+*Note: Vector fields (x,y,z) must be assigned individually, not as arrays.*
+
+### PlayerData (`ID_PLAYER_SYNC`)
+*   `leftRightKeys`, `upDownKeys`, `keysData`
+*   `position.x`, `position.y`, `position.z`
+*   `quaternion.x`, `quaternion.y`, `quaternion.z`, `quaternion.w`
+*   `health`, `armor`, `weapon`, `specialAction`
+*   `moveSpeed.x`, `moveSpeed.y`, `moveSpeed.z`
+*   `surfingOffsets.x`, `surfingOffsets.y`, `surfingOffsets.z`
+*   `surfingVehicleId`, `animationId`, `animationFlags`
+
+### IncarData (`ID_VEHICLE_SYNC`)
+*   `vehicleId`, `vehicleHealth`, `playerHealth`, `armor`
+*   `leftRightKeys`, `upDownKeys`, `keysData`
+*   `position.x`...`z`, `quaternion.x`...`w`, `moveSpeed.x`...`z`
+*   `currentWeapon`, `siren`, `landingGearState`, `trailerId`, `trainSpeed`
+
+### PassengerData (`ID_PASSENGER_SYNC`)
+*   `vehicleId`, `seatId`
+*   `currentWeapon`, `health`, `armor`
+*   `leftRightKeys`, `upDownKeys`, `keysData`
+*   `position.x`, `position.y`, `position.z`
+
+### BulletData (`ID_BULLET_SYNC`)
+*   `targetType`, `targetId`, `weaponId`
+*   `origin.x`...`z`, `target.x`...`z`, `center.x`...`z`
+
+### AimData (`ID_AIM_SYNC`)
+*   `camMode`, `aimZ`, `camExtZoom`, `weaponState`
+*   `camFront.x`...`z`, `camPos.x`...`z`
+
+## Best Practices
+1.  **BitStream Memory**: If you create a BitStream using `mb.getBitStream()`, you **must** call `bs:remove()` after sending or processing it to prevent memory leaks. Sync data objects (like `PlayerData`) remove themselves automatically.
+2.  **Handle Storage**: Do not persistently store `BotHandle` objects in global tables. Store the `index` and retrieve the handle via `mb.getBotHandleByIndex(index)` when needed to ensure validity.
+3.  **Validation**: Always check `if bot ~= nil` after retrieving a handle by index.
+4.  **Vectors**: Unlike `Samp.Lua`, you cannot pass vectors as `{x, y, z}`. You must assign `data.position.x = val` explicitly.

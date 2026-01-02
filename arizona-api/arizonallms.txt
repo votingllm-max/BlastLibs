@@ -1,0 +1,148 @@
+# Arizona API (TrilogyLoader)
+Lua library for Arizona Trilogy Multiplayer (GTA: The Definitive Edition) via TrilogyLoader. Allows interaction with chat, players, vehicles, world objects, and UI/CEF.
+
+## Dependencies
+```lua
+require("ArizonaAPI")
+```
+
+## Boilerplate
+```lua
+require("ArizonaAPI")
+
+function main()
+    -- Register a chat command
+    sampRegisterChatCommand("mycmd", function(arg)
+        sampAddChatMessage("Command executed with arg: " .. tostring(arg), 0xFFFFFFFF)
+    end)
+    
+    -- Print local player info
+    if sampIsLocalPlayerConnected() then
+        local id = sampGetLocalPlayerId()
+        local name = sampGetPlayerNickName(id)
+        sampAddChatMessage("Welcome, " .. name, -1)
+    end
+end
+
+-- Event: Cancellable (return false to block)
+function onClientMessage(message, color)
+    if message:find("BlockedWord") then
+        return false -- Block message from showing
+    end
+end
+
+-- Event: Non-cancellable
+function onServerJoin(playerId)
+    local nick = sampGetPlayerNickName(playerId)
+    print("Player joined: " .. nick)
+end
+```
+
+## Data Types & Structures
+Native types (`int`, `float`, `bool`, `string`) are used. Handles (CharHandle, CarHandle) are integers.
+
+### Structures
+Events pass data as Lua tables. Global enums are available for comparison.
+
+**Global Enums:**
+*   `textDrawInfo.font` (Beckett, FuturaLT, BankGothic, Pricedown, Sprite, ModelPreview, SimpleModelPreview)
+*   `textDrawInfo.aligment` (none, left, center, right)
+*   `objectInfo.type` (none, texture, text)
+*   `objectInfo.textSize` (_32x32 to _512x512)
+*   `objectInfo.textAlighn` (left, center, right)
+*   `spectrateMode` (normal, fixed, side)
+
+**TextDraw Props (`textDrawProps`):**
+Used in `onShowTextDraw`.
+```lua
+{
+    pos = { x, y },
+    size = { width, height },
+    letterSize = { width, height },
+    color = int,
+    boxColor = int,
+    backgroundColor = int,
+    shadow = int,
+    outline = int,
+    aligment = int, -- Compare with textDrawInfo.aligment
+    font = int,     -- Compare with textDrawInfo.font
+    selectable = bool,
+    useBox = bool,
+    proportional = bool,
+    modelID = int,
+    modelFirstColor = int,
+    modelSecondColor = int,
+    rotation = { x, y, z },
+    zoom = float,
+    text = string
+}
+```
+
+**Object Material (`objectMaterial`):**
+Used in `onCreateObject`, `onSetObjectMaterial`. Structure depends on `type`.
+```lua
+{
+    type = int, -- Compare with objectInfo.type
+    index = int,
+    -- IF type == objectInfo.type.texture:
+    modelID = int,
+    color = int,
+    textureDictionaryName = string,
+    textureName = string,
+    -- IF type == objectInfo.type.text:
+    size = int, -- Compare with objectInfo.textSize
+    fontSize = int,
+    isBold = bool,
+    align = int, -- Compare with objectInfo.textAlighn
+    fontColor = int,
+    backgroundColor = int,
+    fontName = string,
+    text = string
+}
+```
+
+## Syntax & Patterns
+
+### General Functions
+*   **Chat**: `sampAddChatMessage(str, color)`, `sampSendChat(str)`, `sampSendCommand(cmd)`, `sampRegisterChatCommand(cmd, callback)`
+*   **Player Getters**: `sampGetLocalPlayerId()`, `sampGetPlayerColor(id)`, `sampGetPlayerNickName(id)`, `sampGetPlayerHealthById(id)`, `sampGetPlayerArmorById(id)`
+*   **State**: `sampIsPlayerAFK(id)`, `sampIsLocalPlayerConnected()`
+*   **Conversion**: 
+    *   `sampGetCharHandleBySampPlayerId(id)` -> `nHandle`
+    *   `sampGetPlayerIdByCharHandle(nHandle)` -> `nID`
+    *   `sampGetCarHandleBySampVehicleId(id)` -> `nHandle`
+    *   `sampGetVehicleIdByCarHandle(nHandle)` -> `nID`
+*   **Browser (CEF)**: `executeUIBrowserJSCode(js_code)`, `sendUIBrowserMessage(msg)`
+*   **Misc**: `sampToggleCursor(bool)`, `sampGetCurrentServerName()`
+
+### Events
+Define global functions to handle events.
+*   **Cancellable** (return `false` to block):
+    *   `onClientMessage(msg, color)`
+    *   `onSendChat(msg)`
+    *   `onCommand(cmd)`
+    *   `onWorldTime(hour)`, `onSetTimeEx(hour, minute)`
+    *   `onWeather(weatherId)`
+    *   `onSetCheckpoint(x, y, z, r)`, `onDisableCheckpoint()`
+    *   `onSetRaceCheckpoint(...)`, `onDisableRaceCheckpoint()`
+    *   `onUIBrowserJSCodeExecute(code)`, `onSendUIBrowserMessage(msg)`
+    *   `onEditTextDraw(id, text)`, `onShowTextDraw(id, data)`, `onHideTextDraw(id)`
+    *   `onIncomingSelectTextDraw(bool, color)`, `onOutcomingSelectTextDraw(id)`
+
+*   **Non-Cancellable** (Notification only):
+    *   `onStateChanged(old, new)`
+    *   `onServerJoin(id)`, `onServerQuit(id)`
+    *   `onWorldPlayerAdd(id)`, `onWorldPlayerRemove(id)`, `onWorldPlayerDeath(id)`
+    *   `onWorldVehicleAdd(id)`, `onWorldVehicleRemove(id)`
+    *   `onSetPlayerColor(id, color)`, `onSetPlayerName(id, name)`, `onSetPlayerSkin(id, model)`
+    *   `onDeathMessage(killerId, victimId, weapon)`
+    *   `onCreateObject(id, ptr, dist, noCol, attachObj, attachVeh, matArray, matCount)`
+    *   `onObjectDestroy(id)`
+    *   `onSetObjectMaterial(id, data)`
+
+## Best Practices
+*   **Installation**: Scripts go in `Arizona Launcher/bin/Game/Gameface/Binaries/Win64/TrilogyLoader`.
+*   **Nicknames on Quit**: `onServerQuit` does not provide the nickname, only the ID. Cache names in `onServerJoin` if needed.
+*   **Enums**: Always use the global `textDrawInfo`, `objectInfo`, and `spectrateMode` tables for readability instead of raw integers.
+*   **Object Materials**: Iterate `onCreateObject` material array using a standard `for` loop.
+```

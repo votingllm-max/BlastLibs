@@ -1,0 +1,152 @@
+# SNET (Simple Network) / SL:NET
+A Lua networking library based on LuaSocket/UDP for MoonLoader and LuaJIT. It provides UDP communication with TCP-like reliability features (packet verification, delivery priority) suitable for games and chat applications.
+
+## Dependencies
+```lua
+require 'SLNet'
+```
+
+## Client Boilerplate
+```lua
+require 'SLNet'
+
+-- 1. Initialize Network Handle
+local netHandle = SLNetInit()
+
+-- 2. Configuration
+netHandle:setPrefix('MYPROJ') -- Must match server prefix exactly
+
+-- 3. Connect
+-- netHandle:connect(IP, Port)
+netHandle:connect('127.0.0.1', 6666)
+
+-- 4. Packet Handler (Callback)
+function onReceiveData(packetID, bitStream)
+    print('Received Packet ID: ' .. packetID)
+
+    if packetID == 1 then
+        -- Reading data from BitStream
+        local valInt = bitStream:read(UINT8)
+        local valStr = bitStream:read(STRING, bitStream:read(UINT8)) -- Read len, then string
+        print('Data:', valInt, valStr)
+    end
+end
+
+-- 5. Register Hook
+netHandle:setHook(onReceiveData)
+
+-- 6. Main Loop
+function main()
+    -- Example: Send a packet once
+    local bs = BitStream:new()
+    bs:write(UINT8, 128)
+    bs:write(UINT8, #("Hello")):write(STRING, "Hello")
+    -- Send: handle, packetID, bitStream, priority (0-255)
+    SLNetSend(netHandle, 1, bs, 5)
+
+    while true do
+        wait(0) -- MoonLoader yield
+        -- CRITICAL: Must be called in loop to process traffic
+        netHandle:loop() 
+    end
+end
+```
+
+## Server Boilerplate
+```lua
+require 'SLNet'
+
+local netHandle = SLNetInit()
+
+-- 1. Bind to Port
+-- netHandle:bind(IP_Mask, Port)
+netHandle:bind('*', 6666)
+netHandle:setPrefix('MYPROJ')
+
+-- 2. Packet Handler
+-- Server callback includes address and port of sender
+function onReceiveData(packetID, bitStream, addr, port)
+    print('Message from ' .. addr .. ':' .. port)
+
+    if packetID == 1 then
+        -- Read request
+        local val = bitStream:read(UINT8)
+        
+        -- Send response back to specific client
+        local response = BitStream:new()
+        response:write(STRING, "Received " .. val)
+        
+        -- SLNetSend(handle, id, bs, addr, port, priority)
+        SLNetSend(netHandle, 2, response, addr, port, 5)
+    end
+end
+
+netHandle:setHook(onReceiveData)
+
+while true do
+    -- Standalone LuaJIT might use different yield
+    if wait then wait(0) end 
+    netHandle:loop()
+end
+```
+
+## Data Types (BitStream)
+SNET uses a `BitStream` object to pack/unpack data.
+
+**Constants:**
+*   `UINT8` (0 to 255)
+*   `UINT16` (0 to 65,535)
+*   `UINT32` (0 to ~4.29 billion)
+*   `INT8` (-128 to 127)
+*   `INT16` (-32,768 to 32,767)
+*   `INT32` (-2.14 billion to 2.14 billion)
+*   `BOOL` (true/false)
+*   `FLOAT` (-3.4E+38 to +3.4E+38)
+*   `STRING` (Requires length to be known/read first)
+
+## Syntax & Patterns
+
+### BitStream Operations
+```lua
+-- Creation
+local bs = BitStream:new() 
+
+-- Writing (Chaining supported)
+bs:write(UINT8, 255):write(FLOAT, 1.5)
+
+-- Writing Strings (Standard pattern: Length + String)
+local str = "Test"
+bs:write(UINT8, #str):write(STRING, str)
+
+-- Reading
+local num = bs:read(UINT8)
+local flt = bs:read(FLOAT)
+
+-- Reading Strings
+local len = bs:read(UINT8)
+local text = bs:read(STRING, len)
+
+-- Import/Export (Raw Bytes)
+local rawData = bs:export() 
+local newBs = BitStream:new(rawData) -- Import via constructor
+-- OR
+local emptyBs = BitStream:new()
+emptyBs:import(rawData)
+```
+
+### Sending Packets
+*   **Client**: `SLNetSend(netHandle, packetID, bitStream, priority)`
+*   **Server**: `SLNetSend(netHandle, packetID, bitStream, addr, port, priority)`
+*   **Priority**: Integer `0` to `255`. Higher priority = more re-transmission attempts if delivery is not confirmed. Use `0` for unimportant data, `5+` for critical data.
+
+### Connection Management
+*   **Init**: `SLNetInit()` (Call on script start or server change).
+*   **Prefix**: `netHandle:setPrefix(str)` (Security check, packets with mismatched prefix are ignored).
+*   **Loop**: `netHandle:loop()` (Processes outgoing queue and incoming listener. Returns `false` if not connected/bound).
+
+## Best Practices
+1.  **Prefixes**: Always set a unique prefix (`setPrefix`) to prevent conflicts with other SNET scripts running on the same network interface.
+2.  **String Handling**: Strings are not null-terminated automatically. Always write the length (usually as `UINT8` or `UINT16`) before writing the string content.
+3.  **Looping**: The `netHandle:loop()` function is synchronous and non-blocking. It must be called every frame/tick.
+4.  **Priority**: Do not use high priority (e.g., 255) for rapidly changing data (like coordinates), as it floods the network with retries. Use 0 or 1 for stream data.
+```

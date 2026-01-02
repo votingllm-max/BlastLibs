@@ -1,0 +1,148 @@
+# MoonAdditions
+Advanced graphics, memory, and entity manipulation library for MoonLoader (GTA:SA). Provides direct access to rendering primitives, textures, vehicle components, entity matrices, and bone data.
+
+## Dependencies
+```lua
+local mad = require 'MoonAdditions'
+```
+
+## Boilerplate
+```lua
+local mad = require 'MoonAdditions'
+
+function main()
+    -- Example: Load a texture once
+    local my_tex = mad.load_png_texture(getWorkingDirectory() .. '/image.png')
+
+    -- Example: Create a persistent textdraw
+    local hud_td = mad.textdraw.new('Init', 10, 350)
+    hud_td.style = mad.font_style.PRICEDOWN
+    hud_td:set_text_color(255, 255, 255, 255)
+
+    while true do
+        wait(0)
+        -- Update persistent textdraw
+        hud_td.text = "Time: " .. os.date("%X")
+
+        -- Immediate mode drawing (must be called every frame)
+        mad.draw_text("Frame Render", 500, 500, mad.font_style.MENU, 0.5, 1.0, 
+            mad.font_align.CENTER, 640, true, false, 255, 255, 255, 255, 1, 1)
+
+        -- Entity interaction example
+        if isPlayerPlaying(PLAYER_HANDLE) then
+            local pPos = mad.get_object_matrix(PLAYER_PED)
+            if pPos then
+                -- Draw spotlight at player position
+                local x, y, z = pPos.pos:get()
+                mad.draw_spotlight(x, y, z + 2, x, y, z, 0.5, 20)
+            end
+        end
+    end
+end
+```
+
+## Data Types & Classes
+*   **Colors**: R, G, B, A (Integers 0-255).
+*   **Matrix/Vector**: Library provides classes for direct memory manipulation (e.g., `component.matrix.pos`).
+*   **TextDraw Object**: Returned by `mad.textdraw.new`. Properties are mutable (`.text`, `.width`, etc.).
+*   **Shape Object**: Returned by `mad.shape.new`. Used for building polygons vertex by vertex.
+
+## Syntax & Patterns
+
+### Text Rendering
+**Immediate Mode** (Call every frame):
+```lua
+-- str, x, y, style, w, h, align, wrap, proportion, shadow, r, g, b, a, outline, shadow_depth
+mad.draw_text("Text", 100, 100, mad.font_style.SUBTITLES, 0.5, 1.0, 
+    mad.font_align.LEFT, 2000, true, false, 
+    255, 255, 255, 255, 0, 1)
+```
+
+**Persistent Textdraws**:
+```lua
+local td = mad.textdraw.new('Text', x, y)
+td.style = mad.font_style.PRICEDOWN
+td.width = 0.5
+td.outline = 1
+td:set_text_color(r, g, b, a)
+td:set_shadow_color(0, 0, 0, 255)
+-- Updates automatically until script ends or object is destroyed
+```
+
+### Visuals & Textures
+**Loading**:
+```lua
+local tex_png = mad.load_png_texture('path/to/img.png')
+local tex_dds = mad.load_dds_texture('path/to/img.dss')
+local tex_bmp = mad.load_bmp_texture_with_mask('img.bmp', 'mask.bmp')
+local txd_file = mad.load_txd('file.txd')
+local tex_txd = txd_file:get_texture('texture_name')
+```
+
+**Drawing**:
+```lua
+-- Draw Texture: x1, y1, x2, y2
+tex_png:draw(100, 100, 200, 200)
+
+-- Draw Shapes (Polygons)
+local shape = mad.shape.new()
+shape:add_vertex(x, y, r, g, b, a) -- Add vertices
+shape:draw(mad.primitive_type.TRIANGLEFAN, true, mad.blend_method.SRCCOLOR, mad.blend_method.SRCCOLOR)
+
+-- Draw Primitives
+mad.draw_rect_with_gradient(x1, y1, x2, y2, r1,g1,b1,a1, r2,g2,b2,a2, r3,g3,b3,a3, r4,g4,b4,a4)
+mad.draw_spotlight(startX, startY, startZ, endX, endY, endZ, radius, intensity)
+```
+
+### Vehicle Components & Materials
+Access hierarchy: `Vehicle` -> `Components` -> `Objects` -> `Materials`.
+```lua
+-- Helper pattern to iterate all vehicle materials
+function for_each_vehicle_material(car_handle, callback)
+    for _, comp in ipairs(mad.get_all_vehicle_components(car_handle)) do
+        -- comp.matrix, comp.name available here
+        for _, obj in ipairs(comp:get_objects()) do
+            for _, mat in ipairs(obj:get_materials()) do
+                callback(mat)
+            end
+        end
+    end
+end
+
+-- Usage
+for_each_vehicle_material(car, function(mat)
+    -- Get/Set Color
+    local r, g, b, a = mat:get_color()
+    mat:set_color(255, 0, 0, 255)
+    
+    -- Get/Set Texture
+    local tex = mat:get_texture() -- returns texture object or nil
+    if tex then 
+        print(tex.name)
+        mat:set_texture(my_custom_texture) 
+    end
+end)
+```
+
+### Entities & Bones
+```lua
+-- Bones
+local bone = mad.get_char_bone(ped_handle, mad.bone_id.HEAD)
+if bone then
+    local x, y, z = bone.matrix.pos:get()
+    local sx, sy = convert3DCoordsToScreen(x, y, z)
+end
+
+-- Object Matrix
+local matrix = mad.get_object_matrix(object_handle)
+local ox, oy, oz = matrix:get_coords_with_offset(x_offset, y_offset, z_offset)
+
+-- Get surrounding objects
+local objs = mad.get_all_objects(x, y, z, radius)
+```
+
+## Best Practices
+1.  **Asset Loading**: Always use `assert()` when loading textures/TXDs to catch file path errors early.
+2.  **Safety Checks**: Always check `isPlayerPlaying` and handle validity before accessing components or matrices to prevent crashes.
+3.  **Coordinate Conversion**: Use `convert3DCoordsToScreen` (standard MoonLoader function) combined with `mad` matrix positions for 3D tags/labels.
+4.  **Enums**: Use `mad.bone_id`, `mad.font_style`, `mad.font_align` tables instead of magic numbers.
